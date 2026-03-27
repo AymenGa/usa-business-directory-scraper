@@ -131,9 +131,9 @@ scraper/
 
 ## 👤 Author
 
-**Aymen Gacem**
+**Aymen Gasri**
 
-[![Upwork](https://img.shields.io/badge/Upwork-Profile-6fda44?style=flat&logo=upwork)](https://www.upwork.com)
+[![Upwork](https://img.shields.io/badge/Upwork-Profile-6fda44?style=flat&logo=upwork)](https://www.upwork.com/freelancers/~01028a34524db36bf2)
 [![GitHub](https://img.shields.io/badge/GitHub-AymenGa-181717?style=flat&logo=github)](https://github.com/AymenGa)
 
 ---
