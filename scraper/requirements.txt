@@ -1,0 +1,9 @@
+firecrawl-py
+openpyxl
+pandas
+python-dotenv
+requests
+beautifulsoup4
+lxml
+undetected-chromedriver
+selenium

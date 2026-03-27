@@ -1,0 +1,18 @@
+# Environment
+.env
+
+# Claude Code
+.claude/
+.mcp.json
+CLAUDE.md
+
+# Client-specific
+project-instructions.md
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
