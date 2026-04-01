@@ -52,6 +52,68 @@ We require both **Phone** and **Website** for every business. If either is missi
 
 ---
 
+## City Verification at Scrape Time (mandatory)
+
+**Do this inside the scraper, not as a post-fix.** Fashion scraping skipped this — 195 wrong-city rows had to be fixed after the fact with a separate script. Never repeat this.
+
+After extracting the address from the detail page, check that the target city name appears in it before accepting the result:
+
+```python
+CITY_ALIASES = {
+    "new york city": "new york",
+    "east honolulu":  "honolulu",
+    "knik-fairview":  "wasilla",   # Yelp returns Wasilla-area results
+    "enterprise":     "las vegas",
+}
+
+addr_lower  = address.lower()
+city_lower  = city.lower()
+check_city  = CITY_ALIASES.get(city_lower, city_lower)
+
+if addr_lower and check_city not in addr_lower:
+    log.info(f"REJECTED (wrong city): {addr}")
+    continue   # keep searching, don't save this row
+```
+
+Define `CITY_ALIASES` at the **top of every Yelp scraper** (not inline inside a loop).
+
+---
+
+## Location Overrides for Yelp-Unrecognised Cities
+
+Some cities in our 250-city list aren't known to Yelp. Without an override Yelp either returns 0 results or silently returns a nearby area.
+
+```python
+LOCATION_OVERRIDES = {
+    "badger": "99705",   # Badger, AK — Yelp ignores "Badger, Alaska"; use zip code
+}
+```
+
+Usage when building the search URL:
+
+```python
+city_lower  = city.lower()
+search_loc  = LOCATION_OVERRIDES.get(city_lower, f"{city}, {state}")
+location    = quote_plus(search_loc)
+url         = f"https://www.yelp.com/search?find_desc={query}&find_loc={location}"
+```
+
+**0 rows for a problem city is the correct outcome** — better than wrong data. Log it clearly.
+
+**Known problem cities (apply to every category's Yelp scraper):**
+
+| City | State | Problem | Fix |
+|------|-------|---------|-----|
+| Knik-Fairview | AK | Yelp doesn't know it | alias → "wasilla" in city check |
+| Badger | AK | Yelp doesn't know it | search with zip "99705" |
+| East Honolulu | HI | Returns Honolulu results | alias → "honolulu" in city check |
+| Enterprise | NV | Returns Las Vegas results | alias → "las vegas" in city check |
+| New York City | NY | Yelp uses "New York" | alias → "new york" in city check |
+
+Add to this table whenever a new problem city is discovered during any category scrape.
+
+---
+
 ## Yelp-Specific Delays
 
 - Page loads: 4-7 seconds random

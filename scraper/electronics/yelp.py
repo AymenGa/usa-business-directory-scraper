@@ -1,13 +1,13 @@
 """
-Fashion / Accessories — Yelp business scraper (directory data).
-Scrapes Yelp search results for fashion/accessories businesses.
+Electronics / Gadgets — Yelp business scraper (directory data).
+Scrapes Yelp search results for electronics/gadgets businesses.
 3 businesses per city × 250 cities = 750 rows.
 Visits individual business pages when phone/website missing from search.
 
 Run:
-  python scraper/fashion/yelp.py --test        # first 5 cities
-  python scraper/fashion/yelp.py --state TX    # one state only
-  python scraper/fashion/yelp.py               # all 250 cities
+  python scraper/electronics/yelp.py --test        # first 5 cities
+  python scraper/electronics/yelp.py --state TX    # one state only
+  python scraper/electronics/yelp.py               # all 250 cities
 """
 
 import argparse
@@ -25,9 +25,26 @@ from urllib.parse import quote_plus
 BASE_DIR       = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CATEGORIES_DIR = os.path.join(BASE_DIR, "output", "categories")
 METADATA_FILE  = os.path.join(CATEGORIES_DIR, "metadata.json")
-PROGRESS_FILE  = os.path.join(CATEGORIES_DIR, "yelp_progress.json")
+PROGRESS_FILE  = os.path.join(CATEGORIES_DIR, "electronics_yelp_progress.json")
 
-CATEGORY_SLUG  = "fashion_accessories"
+CATEGORY_SLUG  = "electronics_gadgets"
+
+# State name → abbreviation for address verification
+STATE_ABBREVS = {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
+    "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
+    "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+    "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+    "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+    "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+    "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+    "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
+    "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+    "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+    "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
+    "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
+    "Wisconsin": "WI", "Wyoming": "WY",
+}
 BUSINESSES_PER_CITY = 3
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -39,31 +56,68 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ── Category filters ─────────────────────────────────────────────────────────
-# Categories that belong to Fashion / Accessories
+# Categories that belong to Electronics / Gadgets (STORES that SELL electronics)
 ALLOWED_CATEGORIES = {
-    "accessories", "women's clothing", "men's clothing", "fashion",
-    "jewelry", "shoe stores", "shoes", "hats", "handbags", "sunglasses",
-    "leather goods", "watches", "lingerie", "bridal", "formal wear",
-    "vintage clothing", "clothing", "boutique", "eyewear",
-    "women's accessories", "men's accessories",
+    "electronics", "computers", "mobile phones",
+    "video game stores", "electronics stores",
+    "cameras", "gadgets", "drones", "battery stores",
+    "computers & electronics", "cell phones",
+    "telecommunications", "mobile phone accessories",
+    "cell phone accessories", "wearable technology", "appliances",
 }
 
-# Categories to reject even if "accessories" is present
+# Hard reject — NEVER electronics, even if "electronics" tag is present
 REJECT_CATEGORIES = {
-    "costumes", "costume shop", "thrift stores", "gift shops",
-    "sports wear", "sporting goods", "piercing", "tattoo",
-    "auto parts", "auto accessories", "cell phone accessories",
-    "phone repair", "computer repair", "pet stores",
-    "home decor", "furniture", "hardware stores",
-    "halloween", "dance", "dancewear", "dance supply",
-    "party supplies", "uniform", "uniforms", "surplus",
+    "jewelry", "fashion", "clothing",
+    "musical instruments", "music & dvds",
+    "furniture", "home decor", "lighting", "furniture stores",
+    "furniture rental",
+    "locksmiths", "security systems", "electricians",
+    "heating & air conditioning/hvac",
+    "plumbing", "pest control", "dry cleaning",
+    "printing services", "shipping centers",
+    "pawn shops", "thrift stores", "flea markets",
+    "convenience stores", "gas stations",
+    "department stores", "shopping", "shopping centers",
+    "mattresses", "mattress", "vape shops", "vape",
+    "electrical supplies", "electrical supply",
+    "wholesale stores", "grocery", "wholesale",
+    "auto parts & supplies", "auto parts",
+    "auto repair", "automotive", "car stereo installation",
+    "discount store", "bookstores",
 }
 
-# Business names that signal non-fashion even if categories look OK
+# Service categories — only reject if the business has NO selling/store category
+SERVICE_CATEGORIES = {
+    "computer repair", "mobile phone repair", "cell phone repair",
+    "electronics repair", "phone repair", "tablet repair",
+    "it services & computer repair", "it services",
+    "data recovery", "tv mounting", "home theatre installation",
+    "television service providers", "internet service providers",
+}
+
+# Business names that signal non-electronics even if categories look OK
 REJECT_NAME_KEYWORDS = {
-    "halloween", "spirit halloween", "costume", "dance depot",
-    "dancewear", "party city", "uniform", "surplus",
+    # Non-electronics businesses
+    "locksmith", "plumber", "plumbing", "electrician", "hvac",
+    "pest control", "dry clean", "laundry", "pawn",
     "goodwill", "salvation army", "dollar",
+    "furniture", "mattress", "carpet",
+    "wholesale club", "fred meyer",
+    # Service/repair businesses (we want stores that SELL, not fix)
+    "repair", "fix", "fixit", "techfix", "quickfix", "smartfix",
+    "ubreakifix", "handyman", "mounting", "mount service",
+    "installation", "installer", "cinema", "home theater",
+    "home theatre", "av install", "audio install",
+    "computer service", "tech service", "technology service",
+    "computing service", "it service", "network specialist",
+    "tech guidance", "consulting", "consultant",
+}
+
+# Name endings that signal a service business, not a store
+REJECT_NAME_SUFFIXES = {
+    "services", "service", "solutions", "consulting",
+    "repair shop", "repair center",
 }
 
 # ── 250 Cities (50 states × 5 cities) ────────────────────────────────────────
@@ -145,7 +199,6 @@ def is_driver_alive(driver):
 def fetch_page(driver, url, retries=3):
     """Navigate to URL and return page source. Retries on captcha/failure."""
     for attempt in range(1, retries + 1):
-        # If driver is dead, recreate it before trying
         if not is_driver_alive(driver):
             log.warning(f"  Driver dead, recreating... (attempt {attempt})")
             try:
@@ -183,7 +236,6 @@ def fetch_page(driver, url, retries=3):
         except Exception as e:
             log.error(f"  Page load error (attempt {attempt}): {e}")
             if attempt < retries:
-                # Recreate driver on crash/timeout
                 try:
                     driver.quit()
                 except Exception:
@@ -191,7 +243,6 @@ def fetch_page(driver, url, retries=3):
                 time.sleep(5)
                 driver = create_driver()
             else:
-                # Last attempt failed — recreate driver so caller gets a live one
                 try:
                     driver.quit()
                 except Exception:
@@ -204,29 +255,61 @@ def fetch_page(driver, url, retries=3):
 
 
 # ── Category matching ────────────────────────────────────────────────────────
-def is_fashion_business(categories_text):
-    """Check if the business categories match Fashion / Accessories."""
+def is_electronics_business(categories_text):
+    """Check if the business categories match Electronics / Gadgets STORES.
+
+    Logic:
+    1. Hard reject if any category is in REJECT_CATEGORIES (furniture, auto, etc.)
+    2. Check if business has any ALLOWED (selling) category
+    3. If it ONLY has service categories and NO selling categories → reject
+    4. If it has a mix of service + selling categories → accept (e.g. Verizon)
+    """
     if not categories_text:
         return False
     cats = [c.strip().lower() for c in categories_text.split(",")]
-    # Reject if any reject category is present
-    # Use partial match only when reject keyword appears IN the business category
-    # (not the other way — "accessories" should NOT match "auto accessories")
+
+    # Step 1: Hard reject — never electronics regardless
     for c in cats:
         if c in REJECT_CATEGORIES:
             return False
         for rej in REJECT_CATEGORIES:
             if rej in c:
                 return False
-    # Accept if any allowed category is present
+
+    # Step 2: Check for selling categories
+    has_selling_cat = False
     for c in cats:
         if c in ALLOWED_CATEGORIES:
-            return True
-    # Partial match — check if any allowed keyword appears in any category
-    for c in cats:
+            has_selling_cat = True
+            break
         for allowed in ALLOWED_CATEGORIES:
             if allowed in c or c in allowed:
-                return True
+                has_selling_cat = True
+                break
+        if has_selling_cat:
+            break
+
+    # Step 3: If has a selling category → accept even if also has service tags
+    if has_selling_cat:
+        return True
+
+    # Step 4: Only service categories, no selling → reject (pure repair/service shop)
+    has_service_cat = False
+    for c in cats:
+        if c in SERVICE_CATEGORIES:
+            has_service_cat = True
+            break
+        for svc in SERVICE_CATEGORIES:
+            if svc in c:
+                has_service_cat = True
+                break
+        if has_service_cat:
+            break
+
+    if has_service_cat and not has_selling_cat:
+        return False
+
+    return False
     return False
 
 
@@ -236,23 +319,12 @@ def extract_businesses_from_search(html, state, city):
     soup = BeautifulSoup(html, "lxml")
     businesses = []
 
-    # Yelp search results are in list items with specific patterns
-    # Look for business cards — they contain name, rating, categories, address
-    cards = soup.select('[data-testid="serp-ia-card"]')
-    if not cards:
-        # Fallback: find result containers
-        cards = soup.select('div[class*="container"] li[class*="border"]')
-    if not cards:
-        # Another fallback: look for links to /biz/
-        cards = soup.find_all("div", class_=re.compile(r"arrange-unit"))
-
-    # More robust: find all business links and work from there
+    # Find all business links and work from there
     biz_links = soup.find_all("a", href=re.compile(r"^/biz/[^?]+"))
 
     seen_urls = set()
     for link in biz_links:
         href = link.get("href", "")
-        # Clean the URL
         biz_url = href.split("?")[0]
         full_url = f"https://www.yelp.com{biz_url}"
 
@@ -263,11 +335,9 @@ def extract_businesses_from_search(html, state, city):
         name = link.get_text(strip=True)
         if not name or len(name) < 2 or len(name) > 100:
             continue
-        # Skip numbered prefixes like "1. " or "2. "
         name = re.sub(r"^\d+\.\s*", "", name)
         if not name:
             continue
-        # Skip non-business links like "more" or "Write a Review"
         if name.lower() in ("more", "write a review", "read more", "see all"):
             continue
 
@@ -280,7 +350,6 @@ def extract_businesses_from_search(html, state, city):
             if parent is None:
                 break
             card = parent
-            # Stop at a reasonable container size
             card_text = card.get_text(" ", strip=True)
             if len(card_text) > 200:
                 break
@@ -297,23 +366,18 @@ def extract_businesses_from_search(html, state, city):
 
         # Extract categories
         categories = ""
-        # Categories are often in spans near the rating
         cat_spans = card.find_all("span", class_=re.compile(r"css-")) if card else []
         for span in cat_spans:
             text = span.get_text(strip=True)
-            # Categories look like "Accessories, Women's Clothing" or just "Jewelry"
-            # Match multi-category strings with comma
             if "," in text and any(kw in text.lower() for kw in
-                ["accessor", "cloth", "fashion", "jewel", "shoe", "hat",
-                 "boutique", "wear", "leather", "watch", "eyewear", "bridal",
-                 "lingerie", "sunglass", "handbag"]):
+                ["electron", "computer", "phone", "repair", "mobile",
+                 "gadget", "camera", "video game", "appliance", "drone",
+                 "battery", "data recovery", "telecom", "smart home"]):
                 categories = text
                 break
-            # Also match single-category spans (no comma needed)
             text_lower = text.lower().strip()
             if not categories and 2 < len(text_lower) < 40 and text_lower in ALLOWED_CATEGORIES:
                 categories = text
-                # Don't break — keep looking for a richer multi-category span
 
         # Extract address
         address = ""
@@ -325,7 +389,7 @@ def extract_businesses_from_search(html, state, city):
                 address = text
                 break
 
-        # Extract phone (usually not on search page but try)
+        # Extract phone
         phone = ""
         phone_match = re.search(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}", card_text)
         if phone_match:
@@ -364,7 +428,6 @@ def extract_business_details(html):
     if phone_link:
         details["phone"] = phone_link.get_text(strip=True)
     else:
-        # Try finding phone in aside or business info sections
         phone_pattern = re.compile(r"\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}")
         for el in soup.find_all(["p", "span", "div"]):
             text = el.get_text(strip=True)
@@ -380,7 +443,6 @@ def extract_business_details(html):
         if text and "http" not in text.lower() and len(text) < 80:
             details["website"] = text
             break
-        # Extract URL from redirect
         url_match = re.search(r"url=([^&]+)", href)
         if url_match:
             from urllib.parse import unquote
@@ -388,7 +450,6 @@ def extract_business_details(html):
             break
 
     if not details["website"]:
-        # Look for external website links
         website_el = soup.find("a", string=re.compile(r"business.*website|visit.*website", re.I))
         if website_el:
             details["website"] = website_el.get("href", "")
@@ -398,7 +459,6 @@ def extract_business_details(html):
     if addr_el:
         details["address"] = addr_el.get_text(" ", strip=True)
     else:
-        # Try JSON-LD
         for script in soup.find_all("script", type="application/ld+json"):
             try:
                 data = json.loads(script.string)
@@ -435,7 +495,6 @@ def extract_business_details(html):
         try:
             data = json.loads(script.string)
             if isinstance(data, dict) and data.get("@type") == "LocalBusiness":
-                # Yelp JSON-LD sometimes has category info
                 if "additionalType" in data:
                     cats = data["additionalType"]
                     if isinstance(cats, list):
@@ -458,9 +517,8 @@ def extract_business_details(html):
             if cat_names:
                 details["categories"] = ", ".join(cat_names)
 
-    # Another fallback: look for span tags that look like category labels
+    # Another fallback: span tags that look like category labels
     if not details["categories"]:
-        # On Yelp biz pages, categories appear as linked spans near the top
         cat_spans = soup.select('span[class*="css-"] a[href*="/search?"]')
         if cat_spans:
             cat_names = [s.get_text(strip=True) for s in cat_spans if s.get_text(strip=True)]
@@ -545,7 +603,7 @@ def merge_directory():
     """Merge Yelp rows with existing Etsy rows into the final directory file."""
     etsy_path = os.path.join(CATEGORIES_DIR, f"{CATEGORY_SLUG}_directory.xlsx")
     yelp_path = os.path.join(CATEGORIES_DIR, f"{CATEGORY_SLUG}_yelp_directory.xlsx")
-    final_path = etsy_path  # Overwrite the directory file
+    final_path = etsy_path
 
     headers = ["State", "City", "Business Name", "Address", "Phone",
                "Star Rating", "Website", "Profile URL", "Business Image URL", "Source"]
@@ -556,33 +614,30 @@ def merge_directory():
     if os.path.exists(etsy_path):
         wb = openpyxl.load_workbook(etsy_path, read_only=True)
         ws = wb.active
-        file_rows = list(ws.iter_rows(values_only=True))
+        file_headers = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+        for r in range(2, ws.max_row + 1):
+            record = {file_headers[c]: ws.cell(r, c + 1).value for c in range(len(file_headers))}
+            if record.get("Source", "") == "Etsy":
+                all_rows.append(record)
         wb.close()
-        if len(file_rows) > 1:
-            file_headers = [str(h) for h in file_rows[0]]
-            for row in file_rows[1:]:
-                record = {}
-                for i, h in enumerate(file_headers):
-                    record[h] = row[i] if i < len(row) else ""
-                # Keep only Etsy rows (don't duplicate Yelp rows if re-running)
-                if record.get("Source", "") == "Etsy":
-                    all_rows.append(record)
 
     # Load Yelp rows
-    if os.path.exists(yelp_path):
-        wb = openpyxl.load_workbook(yelp_path, read_only=True)
-        ws = wb.active
-        file_rows = list(ws.iter_rows(values_only=True))
-        wb.close()
-        if len(file_rows) > 1:
-            file_headers = [str(h) for h in file_rows[0]]
-            for row in file_rows[1:]:
-                record = {}
-                for i, h in enumerate(file_headers):
-                    record[h] = row[i] if i < len(row) else ""
-                all_rows.append(record)
+    yelp_rows = load_existing_yelp_rows()
+    all_rows.extend(yelp_rows)
 
-    # Sort by State → City so Etsy + Yelp businesses for the same city are grouped
+    # Dedup by Profile URL — same business never appears twice
+    seen_urls = set()
+    deduped = []
+    for row in all_rows:
+        url = row.get("Profile URL", "")
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        deduped.append(row)
+    all_rows = deduped
+
+    # Sort by State → City so both sources are grouped per city
     all_rows.sort(key=lambda r: (str(r.get("State", "")).lower(), str(r.get("City", "")).lower()))
 
     # Write merged file
@@ -590,11 +645,10 @@ def merge_directory():
     ws = wb.active
     ws.title = "Directory"
     ws.append(headers)
-
-    for record in all_rows:
-        ws.append([record.get(h, "") for h in headers])
-
+    for row in all_rows:
+        ws.append([row.get(h, "") for h in headers])
     wb.save(final_path)
+
     etsy_count = sum(1 for r in all_rows if r.get("Source") == "Etsy")
     yelp_count = sum(1 for r in all_rows if r.get("Source") == "Yelp")
     log.info(f"Merged directory: {etsy_count} Etsy + {yelp_count} Yelp = {len(all_rows)} total → {final_path}")
@@ -602,7 +656,7 @@ def merge_directory():
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Fashion / Accessories — Yelp scraper")
+    parser = argparse.ArgumentParser(description="Electronics / Gadgets — Yelp scraper")
     parser.add_argument("--test", action="store_true", help="Test mode: first 5 cities only")
     parser.add_argument("--state", type=str, help="Scrape only one state (e.g., TX)")
     parser.add_argument("--merge-only", action="store_true", help="Only merge Etsy + Yelp, no scraping")
@@ -616,7 +670,6 @@ def main():
     city_list = []
     for state, cities in CITIES.items():
         if args.state:
-            # Match state name or abbreviation
             if args.state.lower() not in (state.lower(), state[:2].lower()):
                 continue
         for city in cities:
@@ -631,15 +684,16 @@ def main():
     # Load progress and existing data
     done = load_progress()
     all_rows = load_existing_yelp_rows()
-    log.info(f"Resuming: {len(done)} cities done, {len(all_rows)} rows collected")
+    # Global dedup — same Yelp URL never appears twice even across different cities
+    global_seen_urls = {row["Profile URL"] for row in all_rows if row.get("Profile URL")}
+    log.info(f"Resuming: {len(done)} cities done, {len(all_rows)} rows collected, {len(global_seen_urls)} unique URLs")
 
     # Filter out already-done cities
     remaining = [(s, c) for s, c in city_list if f"{s}|{c}" not in done]
     log.info(f"Remaining: {len(remaining)} cities to scrape")
 
     if not remaining:
-        log.info("All cities already scraped. Run --merge-only to rebuild directory.")
-        merge_directory()
+        log.info("All cities already scraped.")
         return
 
     driver = create_driver()
@@ -651,156 +705,210 @@ def main():
             log.info(f"\n[{idx}/{len(remaining)}] {city}, {state}")
 
             try:
-                # Build search URL and paginate until we have enough businesses
-                query = quote_plus("fashion accessories")
+                # Try multiple search queries to find more businesses
+                SEARCH_QUERIES = [
+                    "electronics store",
+                    "electronics",
+                    "computer store",
+                    "cell phone store",
+                    "video game store",
+                ]
                 location = quote_plus(f"{city}, {state}")
-                base_search_url = f"https://www.yelp.com/search?find_desc={query}&find_loc={location}"
 
-                MAX_PAGES = 4
+                MAX_PAGES = 3
                 selected = []
                 seen_profile_urls = set()
 
-                for page in range(MAX_PAGES):
-                    if len(selected) >= BUSINESSES_PER_CITY:
+                # Count how many rows this city already has in the data
+                existing_count = sum(1 for r in all_rows
+                                     if r.get("State") == state and r.get("City") == city)
+                needed = BUSINESSES_PER_CITY - existing_count
+                if needed <= 0:
+                    log.info(f"  Already has {existing_count} rows, skipping")
+                    done.add(key)
+                    continue
+                log.info(f"  Already has {existing_count} rows, need {needed} more")
+
+                for query_text in SEARCH_QUERIES:
+                    if len(selected) >= needed:
                         break
 
-                    search_url = base_search_url if page == 0 else f"{base_search_url}&start={page * 10}"
-                    if page > 0:
-                        log.info(f"  Page {page + 1} (need {BUSINESSES_PER_CITY - len(selected)} more)")
+                    query = quote_plus(query_text)
+                    base_search_url = f"https://www.yelp.com/search?find_desc={query}&find_loc={location}"
 
-                    html, driver = fetch_page(driver, search_url)
-                    if not html:
-                        log.warning(f"  Failed to load search page {page + 1} for {city}, {state}")
-                        break
-
-                    # Debug: save first city's first page HTML for inspection
-                    if idx == 1 and page == 0:
-                        debug_path = os.path.join(CATEGORIES_DIR, "_debug_yelp_search.html")
-                        with open(debug_path, "w", encoding="utf-8") as f:
-                            f.write(html)
-                        log.info(f"  [DEBUG] Saved search HTML to {debug_path}")
-
-                    # Extract businesses from search results
-                    businesses = extract_businesses_from_search(html, state, city)
-                    log.info(f"  Found {len(businesses)} raw results (page {page + 1})")
-
-                    if not businesses:
-                        log.info(f"  No more results, stopping pagination")
-                        break
-
-                    # Pre-filter by name (cheap — no page visits)
-                    candidates = []
-                    for biz in businesses:
-                        if len(candidates) + len(selected) >= BUSINESSES_PER_CITY * 3:
-                            break  # Enough candidates to try
-                        if biz["profile_url"] in seen_profile_urls:
-                            continue
-                        seen_profile_urls.add(biz["profile_url"])
-
-                        # Reject by business name first
-                        name_lower = biz["name"].lower()
-                        if any(rej in name_lower for rej in REJECT_NAME_KEYWORDS):
-                            log.info(f"  Rejected (name): {biz['name']}")
-                            continue
-
-                        # Quick reject by search-page categories if clearly wrong
-                        if biz["categories"]:
-                            if not is_fashion_business(biz["categories"]):
-                                log.info(f"  Rejected (search cats): {biz['name']} ({biz['categories']})")
-                                continue
-
-                        candidates.append(biz)
-
-                    if not candidates:
-                        log.info(f"  No candidates on page {page + 1}")
-                        if page < MAX_PAGES - 1:
-                            time.sleep(random.uniform(2, 4))
-                        continue
-
-                    # Visit each candidate's detail page to verify categories + get phone/website
-                    for biz in candidates:
-                        if len(selected) >= BUSINESSES_PER_CITY:
+                    for page in range(MAX_PAGES):
+                        if len(selected) >= needed:
                             break
 
-                        log.info(f"  → Visiting: {biz['name']}")
-                        detail_html, driver = fetch_page(driver, biz["profile_url"])
-                        biz_pages_visited += 1
+                        search_url = base_search_url if page == 0 else f"{base_search_url}&start={page * 10}"
+                        if page > 0:
+                            log.info(f"  Page {page + 1} [{query_text}] (need {needed - len(selected)} more)")
+                        else:
+                            log.info(f"  Searching: '{query_text}'")
 
-                        if detail_html:
-                            details = extract_business_details(detail_html)
+                        html, driver = fetch_page(driver, search_url)
+                        if not html:
+                            log.warning(f"  Failed to load search page {page + 1} for {city}, {state}")
+                            break
 
-                            # Update business info
-                            if details["phone"]:
-                                biz["phone"] = details["phone"]
-                            if details["website"]:
-                                biz["website"] = details["website"]
-                            if details["address"]:
-                                biz["address"] = details["address"]
-                            if details["rating"]:
-                                biz["rating"] = details["rating"]
-                            if details["image_url"]:
-                                biz["image_url"] = details["image_url"]
+                        # Debug: save first city's first page HTML for inspection
+                        if idx == 1 and page == 0 and query_text == SEARCH_QUERIES[0]:
+                            debug_path = os.path.join(CATEGORIES_DIR, "_debug_electronics_yelp_search.html")
+                            with open(debug_path, "w", encoding="utf-8") as f:
+                                f.write(html)
+                            log.info(f"  [DEBUG] Saved search HTML to {debug_path}")
 
-                            # VERIFY address contains the correct city
-                            addr = biz.get("address", "")
-                            addr_lower = addr.lower()
-                            city_lower = city.lower()
-                            CITY_ALIASES = {
-                                "new york city": "new york",
-                                "east honolulu": "honolulu",
-                                "knik-fairview": "wasilla",
-                                "enterprise": "las vegas",
-                            }
-                            check_city = CITY_ALIASES.get(city_lower, city_lower)
-                            if addr_lower and check_city not in addr_lower:
-                                log.info(f"    REJECTED (wrong city): {addr}")
-                                time.sleep(random.uniform(2, 4))
+                        # Extract businesses from search results
+                        businesses = extract_businesses_from_search(html, state, city)
+                        log.info(f"  Found {len(businesses)} raw results (page {page + 1})")
+
+                        if not businesses:
+                            log.info(f"  No more results, stopping pagination for '{query_text}'")
+                            break
+
+                        # Pre-filter by name (cheap — no page visits)
+                        candidates = []
+                        for biz in businesses:
+                            if len(candidates) + len(selected) >= needed * 3:
+                                break
+                            if biz["profile_url"] in seen_profile_urls:
+                                continue
+                            if biz["profile_url"] in global_seen_urls:
+                                log.info(f"  Skipped (already scraped for another city): {biz['name']}")
+                                continue
+                            seen_profile_urls.add(biz["profile_url"])
+
+                            # Reject by business name first
+                            name_lower = biz["name"].lower()
+                            if any(rej in name_lower for rej in REJECT_NAME_KEYWORDS):
+                                log.info(f"  Rejected (name keyword): {biz['name']}")
+                                continue
+                            # Reject names ending with service-related suffixes
+                            if any(name_lower.rstrip().endswith(suf) for suf in REJECT_NAME_SUFFIXES):
+                                log.info(f"  Rejected (name suffix): {biz['name']}")
                                 continue
 
-                            # VALIDATE with detail-page categories (the real ones)
-                            real_cats = details.get("categories", "")
-                            if real_cats:
-                                biz["categories"] = real_cats
-                                if not is_fashion_business(real_cats):
-                                    log.info(f"    REJECTED (detail cats): {real_cats}")
-                                    time.sleep(random.uniform(2, 4))
+                            # Quick reject by search-page categories if clearly wrong
+                            if biz["categories"]:
+                                if not is_electronics_business(biz["categories"]):
+                                    log.info(f"  Rejected (search cats): {biz['name']} ({biz['categories']})")
                                     continue
-                                log.info(f"    VERIFIED: {real_cats}")
-                            else:
-                                # No categories on detail page either — accept if name looks right
-                                name_lower = biz["name"].lower()
-                                fashion_name_hints = ["fashion", "accessor", "jewel", "boutique", "cloth",
-                                                      "shoe", "hat", "leather", "eyewear", "bridal", "sunglass"]
-                                if not any(hint in name_lower for hint in fashion_name_hints):
-                                    log.info(f"    SKIPPED (no categories anywhere): {biz['name']}")
-                                    time.sleep(random.uniform(2, 4))
-                                    continue
-                                log.info(f"    Included (name match, no cats): {biz['name']}")
 
-                            # Require both phone AND website — skip incomplete businesses
-                            if not biz["phone"] or not biz["website"]:
-                                log.info(f"    SKIPPED (incomplete): Phone={biz['phone'] or 'MISSING'} Web={biz['website'] or 'MISSING'}")
+                            candidates.append(biz)
+
+                        if not candidates:
+                            log.info(f"  No candidates on page {page + 1}")
+                            if page < MAX_PAGES - 1:
                                 time.sleep(random.uniform(2, 4))
-                                continue
+                            continue
 
-                            # Reject Yelp placeholder images — only keep real business photos
-                            if biz.get("image_url") and "yelp_og_image" in biz["image_url"]:
-                                biz["image_url"] = ""
+                        # Visit each candidate's detail page to verify categories + get phone/website
+                        for biz in candidates:
+                            if len(selected) >= needed:
+                                break
 
-                            log.info(f"    Phone: {biz['phone']} | Web: {biz['website']}")
+                            log.info(f"  → Visiting: {biz['name']}")
+                            detail_html, driver = fetch_page(driver, biz["profile_url"])
+                            biz_pages_visited += 1
 
-                        selected.append(biz)
-                        time.sleep(random.uniform(2, 4))
+                            if detail_html:
+                                details = extract_business_details(detail_html)
 
-                    # Small delay between pagination
-                    if page < MAX_PAGES - 1 and len(selected) < BUSINESSES_PER_CITY:
+                                # Update business info
+                                if details["phone"]:
+                                    biz["phone"] = details["phone"]
+                                if details["website"]:
+                                    biz["website"] = details["website"]
+                                if details["address"]:
+                                    biz["address"] = details["address"]
+                                if details["rating"]:
+                                    biz["rating"] = details["rating"]
+                                if details["image_url"]:
+                                    biz["image_url"] = details["image_url"]
+
+                                # VERIFY address contains exact city name
+                                addr = biz.get("address", "")
+                                addr_lower = addr.lower()
+                                city_lower = city.lower()
+                                # Handle special city name mismatches (e.g. "New York City" → "New York")
+                                CITY_ALIASES = {
+                                    "new york city": "new york",
+                                    "east honolulu": "honolulu",
+                                    "knik-fairview": "wasilla",
+                                    "enterprise": "las vegas",
+                                }
+                                check_city = CITY_ALIASES.get(city_lower, city_lower)
+                                if addr_lower and check_city not in addr_lower:
+                                    log.info(f"    REJECTED (wrong city): {addr}")
+                                    time.sleep(random.uniform(2, 4))
+                                    continue
+
+                                # VALIDATE with detail-page categories (the real ones)
+                                real_cats = details.get("categories", "")
+                                if real_cats:
+                                    biz["categories"] = real_cats
+                                    if not is_electronics_business(real_cats):
+                                        log.info(f"    REJECTED (detail cats): {real_cats}")
+                                        time.sleep(random.uniform(2, 4))
+                                        continue
+                                    log.info(f"    VERIFIED: {real_cats}")
+                                else:
+                                    # No categories on detail page — accept if name has electronics STORE hints
+                                    name_lower = biz["name"].lower()
+                                    electronics_name_hints = [
+                                        "electron", "computer", "phone", "mobile", "gadget",
+                                        "tech", "digital", "cellular", "wireless",
+                                        "camera", "video game", "battery", "drone", "smart",
+                                    ]
+                                    if not any(hint in name_lower for hint in electronics_name_hints):
+                                        log.info(f"    SKIPPED (no categories anywhere): {biz['name']}")
+                                        time.sleep(random.uniform(2, 4))
+                                        continue
+                                    # Double-check: reject if name signals a service, not a store
+                                    if any(rej in name_lower for rej in REJECT_NAME_KEYWORDS):
+                                        log.info(f"    REJECTED (service name): {biz['name']}")
+                                        time.sleep(random.uniform(2, 4))
+                                        continue
+                                    if any(name_lower.rstrip().endswith(suf) for suf in REJECT_NAME_SUFFIXES):
+                                        log.info(f"    REJECTED (service suffix): {biz['name']}")
+                                        time.sleep(random.uniform(2, 4))
+                                        continue
+                                    log.info(f"    Included (name match, no cats): {biz['name']}")
+
+                                # Require both phone AND website
+                                if not biz["phone"] or not biz["website"]:
+                                    log.info(f"    SKIPPED (incomplete): Phone={biz['phone'] or 'MISSING'} Web={biz['website'] or 'MISSING'}")
+                                    time.sleep(random.uniform(2, 4))
+                                    continue
+
+                                # Reject Yelp placeholder images
+                                if biz.get("image_url") and "yelp_og_image" in biz["image_url"]:
+                                    biz["image_url"] = ""
+
+                                # Require a real image
+                                if not biz.get("image_url") or len(biz["image_url"].strip()) < 5:
+                                    log.info(f"    SKIPPED (no image)")
+                                    time.sleep(random.uniform(2, 4))
+                                    continue
+
+                                log.info(f"    Phone: {biz['phone']} | Web: {biz['website']}")
+
+                            global_seen_urls.add(biz["profile_url"])
+                            selected.append(biz)
+                            time.sleep(random.uniform(2, 4))
+
+                        # Small delay between pagination
+                        if page < MAX_PAGES - 1 and len(selected) < BUSINESSES_PER_CITY:
+                            time.sleep(random.uniform(2, 4))
+
+                    # Delay between search queries
+                    if len(selected) < BUSINESSES_PER_CITY:
                         time.sleep(random.uniform(2, 4))
 
                 log.info(f"  Selected {len(selected)} verified businesses")
 
                 # Build directory rows
                 for biz in selected:
-                    # Clean address — remove "Closed until ..." prefix
                     address = biz.get("address", "")
                     address = re.sub(r"(Open|Closed)\s+(until|now).*?(AM|PM)\s*", "", address, flags=re.I).strip()
                     if not address:
@@ -829,7 +937,7 @@ def main():
                 time.sleep(10)
                 driver = create_driver()
 
-            # Mark done and save periodically (runs for both success and error)
+            # Mark done and save periodically
             done.add(key)
             if idx % 5 == 0 or idx == len(remaining):
                 save_progress(done)
@@ -857,7 +965,7 @@ def main():
     log.info(f"  Business pages visited: {biz_pages_visited}")
     log.info(f"{'='*60}")
 
-    # Merge with Etsy data
+    # Merge Yelp + Etsy into final directory file
     merge_directory()
 
 

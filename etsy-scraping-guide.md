@@ -34,6 +34,35 @@ Each Etsy category needs **two separate scrapers** run in order:
 - One `/c/` page returns only one product type — need multiple sub-categories per category
 - Pick a subset per city, rotate which is skipped using `city_index % len(sub_categories)`
 - Research the Etsy `/c/` structure fresh for each new category — use `firecrawl_map` on the category page
+- Once discovered, document paths below so they never need to be looked up again
+
+---
+
+## Known Sub-Category Paths Per Category
+
+### Fashion / Accessories
+```python
+SUB_CATEGORIES = [
+    ("womens_dresses",  "/c/clothing/womens-clothing/dresses"),
+    ("womens_shoes",    "/c/shoes/womens-shoes"),
+    ("handbags",        "/c/bags-and-purses/handbags"),
+    ("scarves_wraps",   "/c/accessories/scarves-and-wraps"),
+    ("mens_jackets",    "/c/clothing/mens-clothing/jackets-and-coats"),
+    ("jewelry",         "/c/jewelry"),
+]
+```
+
+### Electronics / Gadgets
+```python
+SUB_CATEGORIES = [
+    ("gadgets",      "/c/electronics-and-accessories/gadgets"),
+    ("headphones",   "/c/electronics-and-accessories/audio/headphones-and-stands/headphones"),
+    ("cameras",      "/c/electronics-and-accessories/cameras-and-equipment/cameras"),
+    ("audio",        "/c/electronics-and-accessories/audio"),  # keyboards path returned 0 geo-filtered results
+    ("phone_cases",  "/c/electronics-and-accessories/electronics-cases/phone-cases"),
+    ("video_games",  "/c/electronics-and-accessories/video-games"),
+]
+```
 
 ---
 
@@ -62,6 +91,16 @@ Each Etsy category needs **two separate scrapers** run in order:
 - Set MAX_PAGES limit (used 5 for Fashion)
 - If a page returns 0 listings, stop paginating that sub-category
 - Paginate only when dedup exhausts page 1
+
+## Fallback Sub-Category Logic
+
+When a sub-category returns 0 listings for a city, automatically try the rotated-out (skipped) sub-category as a fallback before giving up. This maximises yield per city without changing the rotation pattern.
+
+- Split subs into `active_subs` (5) + `fallbacks` (the 1 skipped sub)
+- Extract `_try_subcategory(driver, city, state, label, path, location, seen_urls)` as a helper
+- In the main loop: if `_try_subcategory` returns `None` → pop next fallback and try it
+- `fallback_idx` pointer ensures each fallback is only tried once per city
+- `seen_urls` dedup applies to both primary and fallback attempts
 
 ---
 

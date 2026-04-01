@@ -178,6 +178,10 @@ def write_sheet(wb, sheet_title, tab_color, headers, data):
             if col_idx == rating_col and isinstance(value, float):
                 cell.number_format = '0.00 "★"'
 
+    # Auto-fit row heights so wrapped text is fully visible on open
+    for row_idx in range(2, len(data) + 2):
+        ws.row_dimensions[row_idx].bestFit = True
+
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
     autofit_columns(ws)
