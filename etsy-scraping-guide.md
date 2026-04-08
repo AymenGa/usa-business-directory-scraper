@@ -64,6 +64,18 @@ SUB_CATEGORIES = [
 ]
 ```
 
+### Home and Garden
+```python
+SUB_CATEGORIES = [
+    ("outdoor_garden",  "/c/home-and-living/outdoor-and-garden"),
+    ("furniture",       "/c/home-and-living/furniture"),
+    ("home_decor",      "/c/home-and-living/home-decor"),
+    ("kitchen_dining",  "/c/home-and-living/kitchen-and-dining"),
+    ("lighting",        "/c/home-and-living/lighting"),
+    ("storage",         "/c/home-and-living/storage-and-organization"),
+]
+```
+
 ---
 
 ## Shop Name Extraction (Products Scraper)

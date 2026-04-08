@@ -143,12 +143,15 @@ def write_sheet(wb, sheet_title, tab_color, headers, data):
     # Detect special columns by name
     price_col  = None
     rating_col = None
+    url_cols   = set()
     for i, h in enumerate(headers, start=1):
         hl = str(h).lower()
         if hl == "price":
             price_col = i
         if "star" in hl or "rating" in hl:
             rating_col = i
+        if "url" in hl or "link" in hl or "website" in hl:
+            url_cols.add(i)
 
     # Data rows
     for row_idx, row in enumerate(data, start=2):
